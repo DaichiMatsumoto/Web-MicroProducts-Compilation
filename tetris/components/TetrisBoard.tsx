@@ -18,7 +18,7 @@ export function TetrisBoard({ board, currentPiece }: TetrisBoardProps) {
               (currentPiece &&
                 currentPiece.shape[y - currentPiece.y] &&
                 currentPiece.shape[y - currentPiece.y][x - currentPiece.x])
-                ? cell || currentPiece.color
+                ? cell || currentPiece?.color
                 : "bg-gray-100"
             }`}
             aria-label={cell ? "ブロック" : "空きマス"}

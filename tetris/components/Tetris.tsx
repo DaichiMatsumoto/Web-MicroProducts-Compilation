@@ -1,16 +1,16 @@
-'use client'
+"use client";
 
-import React from 'react'
-import { useTetris } from './TetrisLogic'
-import { TetrisBoard } from './TetrisBoard'
-import { HeldPiece } from './HeldPiece'
-import { Button } from "@/components/ui/button"
+import React from "react";
+import { useTetris } from "./TetrisLogic";
+import { TetrisBoard } from "./TetrisBoard";
+import { HeldPiece } from "./HeldPiece";
+import { Button } from "@/components/ui/button";
 
 export function TetrisComponent() {
   const [
     { board, currentPiece, heldPiece, gameOver, score, level },
-    { moveHorizontally, moveDown, rotate, holdPiece, restartGame }
-  ] = useTetris()
+    { restartGame },
+  ] = useTetris();
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
@@ -39,5 +39,5 @@ export function TetrisComponent() {
         <p>スペース : テトリミノを保留</p>
       </div>
     </div>
-  )
+  );
 }
