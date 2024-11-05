@@ -9,7 +9,17 @@ import { Button } from "@/components/ui/button";
 
 export default function Tetris() {
   const [
-    { board, currentPiece, heldPiece, nextPieces, gameOver, score, level },
+    {
+      board,
+      currentPiece,
+      heldPiece,
+      nextPieces,
+      gameOver,
+      score,
+      level,
+      calculateDropPosition,
+      showBonus,
+    },
     { restartGame },
   ] = useTetris();
 
@@ -19,7 +29,11 @@ export default function Tetris() {
       <div className="flex items-start gap-4">
         <HeldPiece piece={heldPiece} />
         <div className="bg-white p-4 rounded-lg shadow-lg">
-          <TetrisBoard board={board} currentPiece={currentPiece} />
+          <TetrisBoard
+            board={board}
+            currentPiece={currentPiece}
+            calculateDropPosition={calculateDropPosition}
+          />
         </div>
         <NextPieces pieces={nextPieces} />
       </div>
@@ -27,6 +41,11 @@ export default function Tetris() {
         <span className="mr-4">スコア: {score}</span>
         <span>レベル: {level}</span>
       </div>
+      {showBonus && (
+        <div className="mt-4 text-2xl font-bold text-yellow-500 animate-pulse">
+          ボーナス！
+        </div>
+      )}
       {gameOver && (
         <div className="mt-4 text-center">
           <p className="text-2xl font-bold text-red-500 mb-2">ゲームオーバー</p>
@@ -36,7 +55,7 @@ export default function Tetris() {
       <div className="mt-4 text-sm text-gray-600">
         <p>操作方法:</p>
         <p>← → : 左右移動</p>
-        <p>↓ : 下に移動</p>
+        <p>↓ : 落下確定</p>
         <p>↑ : 回転</p>
         <p>スペース : テトリミノを保留</p>
       </div>

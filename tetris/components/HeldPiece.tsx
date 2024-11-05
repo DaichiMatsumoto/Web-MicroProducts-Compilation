@@ -27,12 +27,12 @@ export function HeldPiece({ piece }: HeldPieceProps) {
   return (
     <div className="bg-white p-4 rounded-lg shadow-md w-32">
       <h2 className="text-sm font-semibold mb-2">保留中</h2>
-      <div className="grid grid-cols-4 gap-px bg-gray-100 p-px">
+      <div className="grid grid-cols-4 gap-px bg-gray-700 p-px">
         {grid.map((row, y) =>
           row.map((cell, x) => (
             <div
               key={`${y}-${x}`}
-              className={`w-6 h-6 ${cell ? piece?.color : "bg-gray-100"}`}
+              className={`w-6 h-6 ${cell ? piece?.color : "bg-gray-900"}`}
               aria-label={cell ? "ブロック" : "空きマス"}
             />
           ))
