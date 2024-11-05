@@ -63,6 +63,7 @@ export function useTetris(): [GameState, GameActions] {
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
+  const [showBonus, setShowBonus] = useState(false);
 
   const newPiece = useCallback(() => {
     const randomTetromino =
@@ -113,15 +114,25 @@ export function useTetris(): [GameState, GameActions] {
     []
   );
 
-  const moveDown = useCallback(() => {
-    if (!currentPiece) return;
-    if (checkCollision(currentPiece, board, { x: 0, y: 1 })) {
+  const calculateDropPosition = useCallback(
+    (piece: TetrisPiece, board: TetrisBoard) => {
+      let dropY = piece.y;
+      while (!checkCollision(piece, board, { x: 0, y: dropY - piece.y + 1 })) {
+        dropY++;
+      }
+      return dropY;
+    },
+    [checkCollision]
+  );
+
+  const lockPiece = useCallback(
+    (piece: TetrisPiece | null) => {
+      if (!piece) return;
       const newBoard = board.map((row) => [...row]);
-      currentPiece.shape.forEach((row, y) => {
+      piece.shape.forEach((row, y) => {
         row.forEach((value, x) => {
           if (value) {
-            newBoard[y + currentPiece.y][x + currentPiece.x] =
-              currentPiece.color;
+            newBoard[y + piece.y][x + piece.x] = piece.color;
           }
         });
       });
@@ -139,17 +150,29 @@ export function useTetris(): [GameState, GameActions] {
       }
       setBoard(clearedBoard);
       setScore((prev) => {
-        const newScore = prev + linesCleared * 100 * level;
+        let newScore = prev + linesCleared * 100 * level;
+        if (linesCleared >= 4) {
+          newScore += 1000 * level; // ボーナス得点
+          setShowBonus(true);
+          setTimeout(() => setShowBonus(false), 2000); // 2秒後にボーナス表示を消す
+        }
         if (newScore > level * 1000) {
           setLevel((prevLevel) => prevLevel + 1);
         }
         return newScore;
       });
       spawnNewPiece();
-      return;
-    }
-    setCurrentPiece((prev) => (prev ? { ...prev, y: prev.y + 1 } : null));
-  }, [currentPiece, board, checkCollision, level, spawnNewPiece]);
+    },
+    [board, level, spawnNewPiece]
+  );
+
+  const hardDrop = useCallback(() => {
+    if (!currentPiece) return;
+    const dropY = calculateDropPosition(currentPiece, board);
+    const droppedPiece = { ...currentPiece, y: dropY };
+    setCurrentPiece(droppedPiece);
+    lockPiece(droppedPiece);
+  }, [currentPiece, board, calculateDropPosition, lockPiece]);
 
   const moveHorizontally = useCallback(
     (direction: number) => {
@@ -207,7 +230,7 @@ export function useTetris(): [GameState, GameActions] {
           moveHorizontally(1);
           break;
         case "ArrowDown":
-          moveDown();
+          hardDrop();
           break;
         case "ArrowUp":
           rotate();
@@ -221,17 +244,24 @@ export function useTetris(): [GameState, GameActions] {
     return () => {
       window.removeEventListener("keydown", handleKeyPress);
     };
-  }, [gameOver, moveHorizontally, moveDown, rotate, holdPiece]);
+  }, [gameOver, moveHorizontally, hardDrop, rotate, holdPiece]);
 
   useEffect(() => {
     if (gameOver) return;
     const gameLoop = setInterval(() => {
-      moveDown();
-    }, 1000 - (level - 1) * 100);
+      if (
+        currentPiece &&
+        !checkCollision(currentPiece, board, { x: 0, y: 1 })
+      ) {
+        setCurrentPiece((prev) => (prev ? { ...prev, y: prev.y + 1 } : null));
+      } else {
+        lockPiece(currentPiece);
+      }
+    }, 1000 - (level - 1) * 50);
     return () => {
       clearInterval(gameLoop);
     };
-  }, [gameOver, moveDown, level]);
+  }, [gameOver, currentPiece, board, checkCollision, lockPiece, level]);
 
   useEffect(() => {
     if (!currentPiece && nextPieces.length === 0) {
@@ -246,7 +276,6 @@ export function useTetris(): [GameState, GameActions] {
     }
   }, [currentPiece, board, checkCollision]);
 
-  // ゲーム開始時に最初のピースを生成する
   useEffect(() => {
     if (!currentPiece && nextPieces.length === 0) {
       setNextPieces([newPiece(), newPiece()]);
@@ -263,13 +292,22 @@ export function useTetris(): [GameState, GameActions] {
     setGameOver(false);
     setScore(0);
     setLevel(1);
-    // ゲーム再開時に最初のピースを生成する
     setNextPieces([newPiece(), newPiece()]);
     setCurrentPiece(newPiece());
   }, [newPiece]);
 
   return [
-    { board, currentPiece, heldPiece, nextPieces, gameOver, score, level },
-    { moveHorizontally, moveDown, rotate, holdPiece, restartGame },
+    {
+      board,
+      currentPiece,
+      heldPiece,
+      nextPieces,
+      gameOver,
+      score,
+      level,
+      calculateDropPosition,
+      showBonus,
+    },
+    { moveHorizontally, hardDrop, rotate, holdPiece, restartGame },
   ];
 }

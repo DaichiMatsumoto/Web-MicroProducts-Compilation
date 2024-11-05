@@ -1,13 +1,13 @@
-export type TetrisPiece = {
+export type TetrisBoard = (string | 0)[][];
+
+export interface TetrisPiece {
   shape: number[][];
   color: string;
   x: number;
   y: number;
-};
+}
 
-export type TetrisBoard = (string | 0)[][];
-
-export type GameState = {
+export interface GameState {
   board: TetrisBoard;
   currentPiece: TetrisPiece | null;
   heldPiece: TetrisPiece | null;
@@ -15,12 +15,14 @@ export type GameState = {
   gameOver: boolean;
   score: number;
   level: number;
-};
+  calculateDropPosition: (piece: TetrisPiece, board: TetrisBoard) => number;
+  showBonus: boolean;
+}
 
-export type GameActions = {
+export interface GameActions {
   moveHorizontally: (direction: number) => void;
-  moveDown: () => void;
+  hardDrop: () => void;
   rotate: () => void;
   holdPiece: () => void;
   restartGame: () => void;
-};
+}
