@@ -1,5 +1,5 @@
-import { TetrisComponent } from "@/components/Tetris";
+import Tetris from "@/components/Tetris";
 
 export default function Page() {
-  return <TetrisComponent />;
+  return <Tetris />;
 }

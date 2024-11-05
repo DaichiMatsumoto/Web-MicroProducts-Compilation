@@ -4,11 +4,12 @@ import React from "react";
 import { useTetris } from "./TetrisLogic";
 import { TetrisBoard } from "./TetrisBoard";
 import { HeldPiece } from "./HeldPiece";
+import { NextPieces } from "./NextPieces";
 import { Button } from "@/components/ui/button";
 
-export function TetrisComponent() {
+export default function Tetris() {
   const [
-    { board, currentPiece, heldPiece, gameOver, score, level },
+    { board, currentPiece, heldPiece, nextPieces, gameOver, score, level },
     { restartGame },
   ] = useTetris();
 
@@ -20,6 +21,7 @@ export function TetrisComponent() {
         <div className="bg-white p-4 rounded-lg shadow-lg">
           <TetrisBoard board={board} currentPiece={currentPiece} />
         </div>
+        <NextPieces pieces={nextPieces} />
       </div>
       <div className="mt-4 text-xl font-bold">
         <span className="mr-4">スコア: {score}</span>

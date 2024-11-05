@@ -11,6 +11,7 @@ export type GameState = {
   board: TetrisBoard;
   currentPiece: TetrisPiece | null;
   heldPiece: TetrisPiece | null;
+  nextPieces: TetrisPiece[];
   gameOver: boolean;
   score: number;
   level: number;

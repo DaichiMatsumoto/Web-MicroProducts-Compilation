@@ -58,6 +58,7 @@ export function useTetris(): [GameState, GameActions] {
   const [board, setBoard] = useState<TetrisBoard>(createEmptyBoard());
   const [currentPiece, setCurrentPiece] = useState<TetrisPiece | null>(null);
   const [heldPiece, setHeldPiece] = useState<TetrisPiece | null>(null);
+  const [nextPieces, setNextPieces] = useState<TetrisPiece[]>([]);
   const [canHold, setCanHold] = useState(true);
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
@@ -77,9 +78,13 @@ export function useTetris(): [GameState, GameActions] {
   }, []);
 
   const spawnNewPiece = useCallback(() => {
-    setCurrentPiece(newPiece());
+    if (nextPieces.length < 2) {
+      setNextPieces((prev) => [...prev, newPiece(), newPiece()]);
+    }
+    setCurrentPiece(nextPieces[0]);
+    setNextPieces((prev) => [...prev.slice(1), newPiece()]);
     setCanHold(true);
-  }, [newPiece]);
+  }, [newPiece, nextPieces]);
 
   const checkCollision = useCallback(
     (
@@ -174,9 +179,7 @@ export function useTetris(): [GameState, GameActions] {
   }, [currentPiece, board, checkCollision]);
 
   const holdPiece = useCallback(() => {
-    if (!canHold) return;
-    if (!currentPiece) return;
-
+    if (!canHold || !currentPiece) return;
     setCanHold(false);
     if (heldPiece) {
       setCurrentPiece({
@@ -231,10 +234,11 @@ export function useTetris(): [GameState, GameActions] {
   }, [gameOver, moveDown, level]);
 
   useEffect(() => {
-    if (!currentPiece) {
+    if (!currentPiece && nextPieces.length === 0) {
+      setNextPieces([newPiece(), newPiece()]);
       spawnNewPiece();
     }
-  }, [currentPiece, spawnNewPiece]);
+  }, [currentPiece, nextPieces, newPiece, spawnNewPiece]);
 
   useEffect(() => {
     if (currentPiece && checkCollision(currentPiece, board, { x: 0, y: 0 })) {
@@ -242,18 +246,30 @@ export function useTetris(): [GameState, GameActions] {
     }
   }, [currentPiece, board, checkCollision]);
 
+  // ゲーム開始時に最初のピースを生成する
+  useEffect(() => {
+    if (!currentPiece && nextPieces.length === 0) {
+      setNextPieces([newPiece(), newPiece()]);
+      setCurrentPiece(newPiece());
+    }
+  }, [currentPiece, newPiece, nextPieces.length]);
+
   const restartGame = useCallback(() => {
     setBoard(createEmptyBoard());
     setCurrentPiece(null);
     setHeldPiece(null);
+    setNextPieces([]);
     setCanHold(true);
     setGameOver(false);
     setScore(0);
     setLevel(1);
-  }, []);
+    // ゲーム再開時に最初のピースを生成する
+    setNextPieces([newPiece(), newPiece()]);
+    setCurrentPiece(newPiece());
+  }, [newPiece]);
 
   return [
-    { board, currentPiece, heldPiece, gameOver, score, level },
+    { board, currentPiece, heldPiece, nextPieces, gameOver, score, level },
     { moveHorizontally, moveDown, rotate, holdPiece, restartGame },
   ];
 }
