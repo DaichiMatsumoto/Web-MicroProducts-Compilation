@@ -1,3 +1,3 @@
-このリポジトリは、小さなプロダクトやゲームの集まりです。
+## Tetris
 
-詳細な情報は[こちら](./readme/README.md)をご覧ください。
+![Tetris Playing](./readme/media/tetris_playing.gif)
