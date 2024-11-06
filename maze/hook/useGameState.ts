@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { stages } from "./stages";
 
 interface Position {
@@ -18,6 +18,7 @@ interface Watcher extends Player {
 export const useGameState = () => {
   const [currentStage, setCurrentStage] = useState(0);
   const [maze, setMaze] = useState(stages[currentStage].maze);
+  const [goalPosition, setGoalPosition] = useState<Position | null>(null); // 追加
   const [playerPosition, setPlayerPosition] = useState<Player>({
     ...stages[currentStage].playerStart,
     direction: 1,
@@ -34,19 +35,30 @@ export const useGameState = () => {
     "playing" | "gameover" | "clear"
   >("playing");
   const [score, setScore] = useState(0);
+  const playerPositionRef = useRef(playerPosition);
+
+  useEffect(() => {
+    playerPositionRef.current = playerPosition;
+  }, [playerPosition]);
+
+  // ゴールの位置を計算して保存
+  useEffect(() => {
+    const position = maze.reduce(
+      (acc, row, y) => {
+        const x = row.indexOf(2);
+        return x !== -1 ? { x, y } : acc;
+      },
+      { x: -1, y: -1 }
+    );
+    setGoalPosition(position);
+  }, [maze]);
 
   const getDistanceToGoal = useCallback(
     (x: number, y: number) => {
-      const goalPosition = maze.reduce(
-        (acc, row, y) => {
-          const x = row.indexOf(2);
-          return x !== -1 ? { x, y } : acc;
-        },
-        { x: -1, y: -1 }
-      );
+      if (!goalPosition) return Infinity;
       return Math.abs(x - goalPosition.x) + Math.abs(y - goalPosition.y);
     },
-    [maze] // maze が変わったときのみ新しい関数が生成される
+    [goalPosition]
   );
 
   const movePlayer = useCallback(
@@ -63,17 +75,25 @@ export const useGameState = () => {
         else if (dy === 1) newDirection = 2;
         else if (dy === -1) newDirection = 0;
 
-        if (maze[newY][newX] !== 1) {
-          const oldDistance = getDistanceToGoal(prev.x, prev.y);
-          const newDistance = getDistanceToGoal(newX, newY);
-          if (newDistance < oldDistance) {
-            setScore((prevScore) => prevScore + 10);
-          } else if (newDistance > oldDistance) {
-            setScore((prevScore) => Math.max(0, prevScore - 5));
-          }
-          return { x: newX, y: newY, direction: newDirection };
+        // 範囲チェック
+        if (
+          newX < 0 ||
+          newY < 0 ||
+          newY >= maze.length ||
+          newX >= maze[0].length ||
+          maze[newY][newX] === 1
+        ) {
+          return { ...prev, direction: newDirection };
         }
-        return { ...prev, direction: newDirection };
+
+        const oldDistance = getDistanceToGoal(prev.x, prev.y);
+        const newDistance = getDistanceToGoal(newX, newY);
+        if (newDistance < oldDistance) {
+          setScore((prevScore) => prevScore + 10);
+        } else if (newDistance > oldDistance) {
+          setScore((prevScore) => Math.max(0, prevScore - 5));
+        }
+        return { x: newX, y: newY, direction: newDirection };
       });
     },
     [gameStatus, maze, getDistanceToGoal]
@@ -243,10 +263,15 @@ export const useGameState = () => {
         let newMode = watcher.mode;
         let newTargetPosition = watcher.targetPosition;
 
-        if (areFacingEachOther(watcher, playerPosition)) {
+        const currentPlayerPosition = playerPositionRef.current;
+
+        if (areFacingEachOther(watcher, currentPlayerPosition)) {
           // 視線が向き合った場合、追跡モードに移行
           newMode = "chasing";
-          newTargetPosition = { x: playerPosition.x, y: playerPosition.y };
+          newTargetPosition = {
+            x: currentPlayerPosition.x,
+            y: currentPlayerPosition.y,
+          };
         }
 
         if (newMode === "chasing" && newTargetPosition) {
@@ -294,13 +319,7 @@ export const useGameState = () => {
         };
       })
     );
-  }, [
-    playerPosition,
-    findPath,
-    maze,
-    getPossibleDirections,
-    getDeltaByDirection,
-  ]);
+  }, [findPath, maze, getPossibleDirections, getDeltaByDirection]);
 
   useEffect(() => {
     if (gameStatus !== "playing") return;
@@ -364,10 +383,25 @@ export const useGameState = () => {
     }
   }, [playerPosition, watcherPositions, mines, maze, currentStage, gameStatus]);
 
+  // ウォッチャーの移動を requestAnimationFrame でスケジュール
   useEffect(() => {
-    const interval = setInterval(moveWatchers, 500); // 0.5秒ごとに移動
-    return () => clearInterval(interval);
-  }, [moveWatchers]);
+    let animationFrameId: number;
+    let lastMoveTime = 0;
+    const moveInterval = 500; // ミリ秒
+    const move = (time: number) => {
+      if (gameStatus !== "playing") return;
+
+      if (time - lastMoveTime >= moveInterval) {
+        moveWatchers();
+        lastMoveTime = time;
+      }
+      animationFrameId = requestAnimationFrame(move);
+    };
+
+    animationFrameId = requestAnimationFrame(move);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [moveWatchers, gameStatus]);
 
   const restartGame = useCallback(() => {
     setCurrentStage(0);
