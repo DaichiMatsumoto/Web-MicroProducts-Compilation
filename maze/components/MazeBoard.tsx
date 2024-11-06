@@ -68,7 +68,7 @@ const MazeBoard: React.FC<MazeBoardProps> = ({
       ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
       ctx.beginPath();
       ctx.moveTo((watcher.x + 0.5) * cellSize, (watcher.y + 0.5) * cellSize);
-      const watcherAngle = (watcher.direction * Math.PI) / 2;
+      const watcherAngle = ((watcher.direction - 1) * Math.PI) / 2;
       ctx.arc(
         (watcher.x + 0.5) * cellSize,
         (watcher.y + 0.5) * cellSize,

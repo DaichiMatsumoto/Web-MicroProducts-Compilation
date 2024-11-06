@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { stages } from "./stages";
 
 interface Position {
@@ -6,17 +6,19 @@ interface Position {
   y: number;
 }
 
-interface Watcher extends Position {
-  direction: number; // 0: 上, 1: 右, 2: 下, 3: 左
+interface Player extends Position {
+  direction: number;
 }
 
-interface Player extends Position {
-  direction: number; // 0: 上, 1: 右, 2: 下, 3: 左
+interface Watcher extends Player {
+  mode: "searching" | "chasing";
+  targetPosition?: Position; // 追跡するプレイヤーの位置
 }
 
 export const useGameState = () => {
   const [currentStage, setCurrentStage] = useState(0);
   const [maze, setMaze] = useState(stages[currentStage].maze);
+  const [goalPosition, setGoalPosition] = useState<Position | null>(null); // 追加
   const [playerPosition, setPlayerPosition] = useState<Player>({
     ...stages[currentStage].playerStart,
     direction: 1,
@@ -25,6 +27,7 @@ export const useGameState = () => {
     stages[currentStage].watcherStarts.map((start) => ({
       ...start,
       direction: 0,
+      mode: "searching",
     }))
   );
   const [mines, setMines] = useState<Position[]>([]);
@@ -32,19 +35,30 @@ export const useGameState = () => {
     "playing" | "gameover" | "clear"
   >("playing");
   const [score, setScore] = useState(0);
+  const playerPositionRef = useRef(playerPosition);
+
+  useEffect(() => {
+    playerPositionRef.current = playerPosition;
+  }, [playerPosition]);
+
+  // ゴールの位置を計算して保存
+  useEffect(() => {
+    const position = maze.reduce(
+      (acc, row, y) => {
+        const x = row.indexOf(2);
+        return x !== -1 ? { x, y } : acc;
+      },
+      { x: -1, y: -1 }
+    );
+    setGoalPosition(position);
+  }, [maze]);
 
   const getDistanceToGoal = useCallback(
     (x: number, y: number) => {
-      const goalPosition = maze.reduce(
-        (acc, row, y) => {
-          const x = row.indexOf(2);
-          return x !== -1 ? { x, y } : acc;
-        },
-        { x: -1, y: -1 }
-      );
+      if (!goalPosition) return Infinity;
       return Math.abs(x - goalPosition.x) + Math.abs(y - goalPosition.y);
     },
-    [maze] // maze が変わったときのみ新しい関数が生成される
+    [goalPosition]
   );
 
   const movePlayer = useCallback(
@@ -61,17 +75,25 @@ export const useGameState = () => {
         else if (dy === 1) newDirection = 2;
         else if (dy === -1) newDirection = 0;
 
-        if (maze[newY][newX] !== 1) {
-          const oldDistance = getDistanceToGoal(prev.x, prev.y);
-          const newDistance = getDistanceToGoal(newX, newY);
-          if (newDistance < oldDistance) {
-            setScore((prevScore) => prevScore + 10);
-          } else if (newDistance > oldDistance) {
-            setScore((prevScore) => Math.max(0, prevScore - 5));
-          }
-          return { x: newX, y: newY, direction: newDirection };
+        // 範囲チェック
+        if (
+          newX < 0 ||
+          newY < 0 ||
+          newY >= maze.length ||
+          newX >= maze[0].length ||
+          maze[newY][newX] === 1
+        ) {
+          return { ...prev, direction: newDirection };
         }
-        return { ...prev, direction: newDirection };
+
+        const oldDistance = getDistanceToGoal(prev.x, prev.y);
+        const newDistance = getDistanceToGoal(newX, newY);
+        if (newDistance < oldDistance) {
+          setScore((prevScore) => prevScore + 10);
+        } else if (newDistance > oldDistance) {
+          setScore((prevScore) => Math.max(0, prevScore - 5));
+        }
+        return { x: newX, y: newY, direction: newDirection };
       });
     },
     [gameStatus, maze, getDistanceToGoal]
@@ -110,39 +132,127 @@ export const useGameState = () => {
     });
   }, [playerPosition, maze, gameStatus]);
 
-  const isInSight = (watcher: Watcher, player: Player) => {
+  const areFacingEachOther = (watcher: Watcher, player: Player) => {
+    // ウォッチャーとプレイヤーの位置関係
     const dx = player.x - watcher.x;
     const dy = player.y - watcher.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance > 5) return false; // 視野の範囲
 
-    const angle = Math.atan2(dy, dx);
-    const watcherAngle = (watcher.direction * Math.PI) / 2;
-    const angleDiff = Math.abs(angle - watcherAngle);
-    return angleDiff <= Math.PI / 4 || angleDiff >= (Math.PI * 7) / 4;
+    // 距離が1以上離れている場合のみチェック
+    if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+      // ウォッチャーがプレイヤーの方向を向いているか
+      const watcherFacingPlayer =
+        (dx === 0 && dy < 0 && watcher.direction === 0) ||
+        (dx === 0 && dy > 0 && watcher.direction === 2) ||
+        (dy === 0 && dx < 0 && watcher.direction === 3) ||
+        (dy === 0 && dx > 0 && watcher.direction === 1);
+
+      // プレイヤーがウォッチャーの方向を向いているか
+      const playerFacingWatcher =
+        (dx === 0 && dy > 0 && player.direction === 0) ||
+        (dx === 0 && dy < 0 && player.direction === 2) ||
+        (dy === 0 && dx > 0 && player.direction === 3) ||
+        (dy === 0 && dx < 0 && player.direction === 1);
+
+      return watcherFacingPlayer && playerFacingWatcher;
+    }
+
+    return false;
   };
 
-  const areFacing = (watcher: Watcher, player: Player) => {
-    const dx = player.x - watcher.x;
-    const dy = player.y - watcher.y;
-    const playerDirection = (player.direction + 2) % 4; // プレイヤーの反対方向
+  const getDeltaByDirection = useCallback((direction: number) => {
+    switch (direction) {
+      case 0:
+        return { dx: 0, dy: -1 };
+      case 1:
+        return { dx: 1, dy: 0 };
+      case 2:
+        return { dx: 0, dy: 1 };
+      case 3:
+        return { dx: -1, dy: 0 };
+      default:
+        return { dx: 0, dy: 0 };
+    }
+  }, []);
 
-    return (
-      (dx === 0 &&
-        dy < 0 &&
-        watcher.direction === 0 &&
-        playerDirection === 2) ||
-      (dx === 0 &&
-        dy > 0 &&
-        watcher.direction === 2 &&
-        playerDirection === 0) ||
-      (dy === 0 &&
-        dx < 0 &&
-        watcher.direction === 3 &&
-        playerDirection === 1) ||
-      (dy === 0 && dx > 0 && watcher.direction === 1 && playerDirection === 3)
-    );
+  const getPossibleDirections = useCallback(
+    (watcher: Watcher) => {
+      const directions = [];
+      for (let d = 0; d < 4; d++) {
+        const delta = getDeltaByDirection(d);
+        const nx = watcher.x + delta.dx;
+        const ny = watcher.y + delta.dy;
+
+        // 範囲チェック
+        if (nx < 0 || ny < 0 || ny >= maze.length || nx >= maze[0].length) {
+          continue;
+        }
+
+        if (maze[ny][nx] !== 1) {
+          directions.push(d);
+        }
+      }
+      // 壁を向かないように、現在の方向を優先
+      return directions.filter((d) => d !== (watcher.direction + 2) % 4);
+    },
+    [getDeltaByDirection, maze]
+  );
+
+  const getDirection = (from: Watcher, to: Position) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    if (dx === 1) return 1;
+    if (dx === -1) return 3;
+    if (dy === 1) return 2;
+    if (dy === -1) return 0;
+    return from.direction;
   };
+
+  // 簡易的な経路探索アルゴリズム（例として幅優先探索を使用）
+  const findPath = useCallback(
+    (maze: number[][], start: Position, goal: Position) => {
+      const queue: Position[] = [start];
+      const visited = new Set<string>();
+      const cameFrom = new Map<string, Position>();
+
+      const startKey = `${start.x},${start.y}`;
+      visited.add(startKey); // 開始地点を訪問済みに追加
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+
+        if (current.x === goal.x && current.y === goal.y) {
+          // 経路を再構築
+          const path: Position[] = [];
+          let c: Position | undefined = current;
+          while (c) {
+            path.unshift(c);
+            c = cameFrom.get(`${c.x},${c.y}`);
+          }
+          return path;
+        }
+
+        for (let d = 0; d < 4; d++) {
+          const delta = getDeltaByDirection(d);
+          const nx = current.x + delta.dx;
+          const ny = current.y + delta.dy;
+          const key = `${nx},${ny}`;
+
+          // 範囲チェック
+          if (nx < 0 || ny < 0 || ny >= maze.length || nx >= maze[0].length) {
+            continue;
+          }
+
+          if (maze[ny][nx] !== 1 && !visited.has(key)) {
+            visited.add(key);
+            queue.push({ x: nx, y: ny });
+            cameFrom.set(key, current);
+          }
+        }
+      }
+      return [];
+    },
+    [getDeltaByDirection]
+  );
 
   const moveWatchers = useCallback(() => {
     setWatcherPositions((prev) =>
@@ -150,88 +260,66 @@ export const useGameState = () => {
         let newX = watcher.x;
         let newY = watcher.y;
         let newDirection = watcher.direction;
+        let newMode = watcher.mode;
+        let newTargetPosition = watcher.targetPosition;
 
-        if (areFacing(watcher, playerPosition)) {
-          // プレイヤーと向かい合っている場合、一直線に向かう
-          const dx = playerPosition.x - watcher.x;
-          const dy = playerPosition.y - watcher.y;
-          if (Math.abs(dx) > Math.abs(dy)) {
-            newX += Math.sign(dx);
-            newDirection = dx > 0 ? 1 : 3;
+        const currentPlayerPosition = playerPositionRef.current;
+
+        if (areFacingEachOther(watcher, currentPlayerPosition)) {
+          // 視線が向き合った場合、追跡モードに移行
+          newMode = "chasing";
+          newTargetPosition = {
+            x: currentPlayerPosition.x,
+            y: currentPlayerPosition.y,
+          };
+        }
+
+        if (newMode === "chasing" && newTargetPosition) {
+          // プレイヤーを追跡
+          const path = findPath(
+            maze,
+            { x: watcher.x, y: watcher.y },
+            newTargetPosition
+          );
+          if (path.length > 1) {
+            // 次の位置へ移動
+            newX = path[1].x;
+            newY = path[1].y;
+            // 方向を更新
+            newDirection = getDirection(watcher, { x: newX, y: newY });
           } else {
-            newY += Math.sign(dy);
-            newDirection = dy > 0 ? 2 : 0;
-          }
-        } else if (isInSight(watcher, playerPosition)) {
-          // プレイヤーが視野内にいる場合、追跡
-          const dx = playerPosition.x - watcher.x;
-          const dy = playerPosition.y - watcher.y;
-          newDirection = Math.round(Math.atan2(dy, dx) / (Math.PI / 2)) % 4;
-          switch (newDirection) {
-            case 0:
-              newY--;
-              break;
-            case 1:
-              newX++;
-              break;
-            case 2:
-              newY++;
-              break;
-            case 3:
-              newX--;
-              break;
+            // プレイヤーを見失った場合、探索モードに戻る
+            newMode = "searching";
+            newTargetPosition = undefined;
           }
         } else {
-          // ランダムに方向転換
-          newDirection =
-            (watcher.direction + Math.floor(Math.random() * 3) - 1 + 4) % 4;
-          switch (newDirection) {
-            case 0:
-              newY--;
-              break;
-            case 1:
-              newX++;
-              break;
-            case 2:
-              newY++;
-              break;
-            case 3:
-              newX--;
-              break;
+          // 探索モードでの移動
+          const possibleDirections = getPossibleDirections(watcher);
+          if (possibleDirections.length > 0) {
+            // 壁を避けて進める方向から選択
+            newDirection =
+              possibleDirections[
+                Math.floor(Math.random() * possibleDirections.length)
+              ];
+            const delta = getDeltaByDirection(newDirection);
+            newX += delta.dx;
+            newY += delta.dy;
+          } else {
+            // 行き止まりの場合、反転
+            newDirection = (watcher.direction + 2) % 4;
           }
         }
 
-        // 壁に当たった場合、別の方向を試す
-        if (maze[newY][newX] === 1) {
-          const directions = [0, 1, 2, 3].filter((d) => d !== newDirection);
-          for (const d of directions) {
-            newX = watcher.x;
-            newY = watcher.y;
-            switch (d) {
-              case 0:
-                newY--;
-                break;
-              case 1:
-                newX++;
-                break;
-              case 2:
-                newY++;
-                break;
-              case 3:
-                newX--;
-                break;
-            }
-            if (maze[newY][newX] !== 1) {
-              newDirection = d;
-              break;
-            }
-          }
-        }
-
-        return { x: newX, y: newY, direction: newDirection };
+        return {
+          x: newX,
+          y: newY,
+          direction: newDirection,
+          mode: newMode,
+          targetPosition: newTargetPosition,
+        };
       })
     );
-  }, [playerPosition, maze]);
+  }, [findPath, maze, getPossibleDirections, getDeltaByDirection]);
 
   useEffect(() => {
     if (gameStatus !== "playing") return;
@@ -267,7 +355,11 @@ export const useGameState = () => {
         setMaze(nextStage.maze);
         setPlayerPosition({ ...nextStage.playerStart, direction: 1 });
         setWatcherPositions(
-          nextStage.watcherStarts.map((start) => ({ ...start, direction: 0 }))
+          nextStage.watcherStarts.map((start) => ({
+            ...start,
+            direction: 0,
+            mode: "searching",
+          }))
         );
         setMines([]);
       }
@@ -291,10 +383,25 @@ export const useGameState = () => {
     }
   }, [playerPosition, watcherPositions, mines, maze, currentStage, gameStatus]);
 
+  // ウォッチャーの移動を requestAnimationFrame でスケジュール
   useEffect(() => {
-    const interval = setInterval(moveWatchers, 500); // 0.5秒ごとに移動
-    return () => clearInterval(interval);
-  }, [moveWatchers]);
+    let animationFrameId: number;
+    let lastMoveTime = 0;
+    const moveInterval = 500; // ミリ秒
+    const move = (time: number) => {
+      if (gameStatus !== "playing") return;
+
+      if (time - lastMoveTime >= moveInterval) {
+        moveWatchers();
+        lastMoveTime = time;
+      }
+      animationFrameId = requestAnimationFrame(move);
+    };
+
+    animationFrameId = requestAnimationFrame(move);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [moveWatchers, gameStatus]);
 
   const restartGame = useCallback(() => {
     setCurrentStage(0);
@@ -302,7 +409,11 @@ export const useGameState = () => {
     setMaze(initialStage.maze);
     setPlayerPosition({ ...initialStage.playerStart, direction: 1 });
     setWatcherPositions(
-      initialStage.watcherStarts.map((start) => ({ ...start, direction: 0 }))
+      initialStage.watcherStarts.map((start) => ({
+        ...start,
+        direction: 0,
+        mode: "searching",
+      }))
     );
     setMines([]);
     setGameStatus("playing");
