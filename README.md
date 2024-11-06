@@ -1,6 +1,6 @@
 ## Tetris
 
-![Tetris Playing](./readme/media/tetris_playing.gif)
+<!-- ![Tetris Playing](./readme/media/tetris_playing.gif) -->
 
 ## Maze
 
